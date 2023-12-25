@@ -1,0 +1,50 @@
+name: Tests
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        elixir: ['1.15.7']
+        otp: ['26.2.1']
+    steps:
+      - name: Checkout Github repo
+        uses: actions/checkout@v2
+      - name: Sets up an Erlang/OTP environment
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ matrix.elixir }}
+          otp-version: ${{ matrix.otp }}
+      - name: Retrieve cached dependencies
+        uses: actions/cache@v2
+        id: mix-cache
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-${{ hashFiles('mix.lock') }}
+      - name: Install dependencies
+        if: steps.mix-cache.outputs.cache-hit != 'true'
+        run: |
+          mix local.rebar --force
+          mix local.hex --force
+          mix deps.get
+          mix deps.compile
+        env:
+          MIX_ENV: prod
+      - name: Prepare release
+        run: |
+          mix assets.deploy
+          mix phx.digest
+          mix release
+        env:
+          MIX_ENV: prod
+      - name: Upload release
+        uses: actions/upload-artifact@v2
+        with: 
+          name: release-build
+          path: _build/prod/rel
